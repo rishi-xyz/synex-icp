@@ -2,6 +2,7 @@ use ic_llm::{ChatMessage, Model, tool, ParameterType};
 use ic_ledger_types::{AccountIdentifier, AccountBalanceArgs, MAINNET_LEDGER_CANISTER_ID, account_balance};
 use ic_cdk::api::management_canister::http_request::{
     http_request, CanisterHttpRequestArgument, HttpMethod, HttpHeader, HttpResponse, TransformArgs,
+    TransformContext,
 };
 use serde_json::Value;
 
@@ -47,7 +48,7 @@ async fn lookup_icp_account(account: &str) -> String {
     }
 }
 
-/// Lookup the balance of a Sui account using Sui testnet RPC.
+/// Lookup the balance of a Sui account using IPv6-compatible Sui RPC endpoints.
 async fn lookup_sui_account(address: &str) -> String {
     ic_cdk::println!("Starting Sui balance lookup for address: {}", address);
     
@@ -65,15 +66,17 @@ async fn lookup_sui_account(address: &str) -> String {
         return error_msg;
     }
 
-    // Try mainnet first, then testnet if mainnet fails
+    // Try multiple IPv6-compatible Sui mainnet endpoints
     let endpoints = vec![
-        "https://fullnode.mainnet.sui.io",
-        "https://fullnode.testnet.sui.io",
+        "https://sui-mainnet-endpoint.blockvision.org",
+        "https://sui-mainnet-rpc.bartestnet.com", 
+        "https://sui-mainnet.nodeinfra.com",
+        "https://sui.publicnode.com",
+        "https://sui-rpc-mainnet.cosmostation.io",
     ];
     
-    for (i, base_url) in endpoints.iter().enumerate() {
-        let network_name = if i == 0 { "mainnet" } else { "testnet" };
-        ic_cdk::println!("Trying {} endpoint: {}", network_name, base_url);
+    for (index, base_url) in endpoints.iter().enumerate() {
+        ic_cdk::println!("Trying Sui endpoint {} ({}): {}", index + 1, endpoints.len(), base_url);
         
         // Create JSON-RPC request body for getting all balances
         let request_body = format!(
@@ -83,37 +86,47 @@ async fn lookup_sui_account(address: &str) -> String {
 
         ic_cdk::println!("Request body: {}", request_body);
 
+        // Create transform context for deterministic response processing
+        let transform_context = TransformContext::from_name("transform_sui_response".to_string(), vec![]);
+
         let request = CanisterHttpRequestArgument {
             url: base_url.to_string(),
             method: HttpMethod::POST,
             body: Some(request_body.into_bytes()),
             max_response_bytes: Some(8192),
-            transform: None, // Try without transform first
+            transform: Some(transform_context),
             headers: vec![
                 HttpHeader {
                     name: "Content-Type".to_string(),
                     value: "application/json".to_string(),
                 },
+                HttpHeader {
+                    name: "User-Agent".to_string(),
+                    value: "IC-HTTP-Client/1.0".to_string(),
+                },
+                HttpHeader {
+                    name: "Accept".to_string(),
+                    value: "application/json".to_string(),
+                },
             ],
         };
 
-        match http_request(request, 25_000_000_000).await {
+        match http_request(request, 100_000_000_000).await { // Increased cycles to 100B
             Ok((response,)) => {
-                let status_code = response.status.clone();
-                ic_cdk::println!("HTTP response status from {}: {}", network_name, status_code);
+                let status_code = response.status;
+                ic_cdk::println!("HTTP response status from {}: {}", base_url, status_code);
                 
-                // Fix: Compare with u32 instead of i32
                 if status_code < 200u32 || status_code >= 300u32 {
-                    ic_cdk::println!("Bad status code from {}, trying next endpoint", network_name);
-                    continue;
+                    ic_cdk::println!("HTTP error from {}: status code {}", base_url, status_code);
+                    continue; // Try next endpoint
                 }
                 
                 match String::from_utf8(response.body.clone()) {
                     Ok(body) => {
-                        ic_cdk::println!("Response body from {}: {}", network_name, body);
+                        ic_cdk::println!("Response body from {}: {}", base_url, body);
                         
                         if body.is_empty() {
-                            ic_cdk::println!("Empty response from {}, trying next endpoint", network_name);
+                            ic_cdk::println!("Empty response from {}, trying next endpoint", base_url);
                             continue;
                         }
                         
@@ -128,25 +141,14 @@ async fn lookup_sui_account(address: &str) -> String {
                                         .and_then(|v| v.as_i64())
                                         .unwrap_or(-1);
                                     
-                                    if error_code == -32602 || error_msg.contains("Invalid params") {
-                                        ic_cdk::println!("Invalid params error from {}, trying next endpoint", network_name);
-                                        continue;
-                                    }
-                                    
-                                    return format!("RPC Error from {} {}: {}", network_name, error_code, error_msg);
+                                    ic_cdk::println!("RPC Error from {}: {} ({})", base_url, error_msg, error_code);
+                                    continue; // Try next endpoint
                                 }
                                 
                                 if let Some(result) = json.get("result") {
                                     if let Some(balances) = result.as_array() {
                                         if balances.is_empty() {
-                                            let result = format!("Address {} has no balances on Sui {}", address, network_name);
-                                            ic_cdk::println!("No balances found on {}: {}", network_name, result);
-                                            
-                                            // If no balance on mainnet, try testnet
-                                            if network_name == "mainnet" {
-                                                continue;
-                                            }
-                                            return result;
+                                            return format!("Address {} has no balances on Sui mainnet", address);
                                         }
                                         
                                         let mut balance_info = Vec::new();
@@ -160,7 +162,7 @@ async fn lookup_sui_account(address: &str) -> String {
                                                     Ok(balance_value) => {
                                                         if coin_type == "0x2::sui::SUI" {
                                                             let sui_balance = balance_value as f64 / 1_000_000_000.0;
-                                                            balance_info.push(format!("{:.6} SUI", sui_balance));
+                                                            balance_info.push(format!("{:.9} SUI", sui_balance));
                                                         } else {
                                                             let short_coin_type = if coin_type.len() > 50 {
                                                                 format!("{}...{}", &coin_type[..20], &coin_type[coin_type.len()-10..])
@@ -177,50 +179,83 @@ async fn lookup_sui_account(address: &str) -> String {
                                             }
                                         }
                                         
-                                        let result = if balance_info.is_empty() {
-                                            format!("Address {} has balances but couldn't parse them on {}", address, network_name)
+                                        if balance_info.is_empty() {
+                                            return format!("Address {} has balances but couldn't parse them", address);
                                         } else {
-                                            format!("Balances for {} on Sui {}: {}", address, network_name, balance_info.join(", "))
-                                        };
-                                        
-                                        ic_cdk::println!("Final balance result from {}: {}", network_name, result);
-                                        return result;
+                                            return format!("Balances for {} on Sui mainnet: {}", address, balance_info.join(", "));
+                                        }
                                     } else {
-                                        ic_cdk::println!("Unexpected result format from {}", network_name);
-                                        continue;
+                                        ic_cdk::println!("Unexpected result format from {}", base_url);
+                                        continue; // Try next endpoint
                                     }
                                 } else {
-                                    ic_cdk::println!("No result field in response from {}", network_name);
-                                    continue;
+                                    ic_cdk::println!("No result field in response from {}", base_url);
+                                    continue; // Try next endpoint
                                 }
                             }
                             Err(e) => {
-                                ic_cdk::println!("Error parsing JSON response from {}: {}", network_name, e);
-                                continue;
+                                ic_cdk::println!("Error parsing JSON from {}: {}", base_url, e);
+                                continue; // Try next endpoint
                             }
                         }
                     }
                     Err(e) => {
-                        ic_cdk::println!("Error decoding response body from {}: {:?}", network_name, e);
-                        continue;
+                        ic_cdk::println!("Error decoding response body from {}: {:?}", base_url, e);
+                        continue; // Try next endpoint
                     }
                 }
             }
             Err(e) => {
-                ic_cdk::println!("HTTP request failed for {}: {:?}", network_name, e);
-                continue;
+                ic_cdk::println!("HTTP request failed for {}: {:?}", base_url, e);
+                continue; // Try next endpoint
             }
         }
     }
     
-    format!("Failed to get balance for {} from all Sui endpoints", address)
+    // If all endpoints failed
+    format!("Failed to connect to any Sui RPC endpoint. This may be due to network connectivity issues. Tried {} endpoints.", endpoints.len())
 }
 
-/// Transform function for HTTP outcalls (required for consensus)
+/// Transform function for Sui HTTP responses - ensures deterministic consensus
+#[ic_cdk::query]
+fn transform_sui_response(raw: TransformArgs) -> HttpResponse {
+    ic_cdk::println!("Transform function called for Sui response");
+    
+    let mut res = HttpResponse {
+        status: raw.response.status,
+        body: raw.response.body.clone(),
+        headers: vec![], // Remove all headers for deterministic response
+    };
+    
+    // For Sui RPC responses, we need to ensure the response is deterministic
+    // Remove any non-deterministic elements from the response body
+    if let Ok(body_str) = String::from_utf8(raw.response.body.clone()) {
+        if let Ok(mut json) = serde_json::from_str::<Value>(&body_str) {
+            // Remove any timestamp or server-specific fields that might cause consensus issues
+            if let Some(obj) = json.as_object_mut() {
+                // Remove server-specific headers or timestamps if they exist
+                obj.remove("server");
+                obj.remove("timestamp");
+                obj.remove("date");
+                obj.remove("x-request-id");
+                obj.remove("x-trace-id");
+            }
+            
+            // Convert back to deterministic string format
+            if let Ok(clean_json) = serde_json::to_string(&json) {
+                res.body = clean_json.into_bytes();
+            }
+        }
+    }
+    
+    res
+}
+
+/// Generic transform function for HTTP outcalls (fallback)
 #[ic_cdk::query]
 fn transform_response(raw: TransformArgs) -> HttpResponse {
     let mut res = HttpResponse {
-        status: raw.response.status.clone(),
+        status: raw.response.status,
         body: raw.response.body.clone(),
         headers: vec![],
     };

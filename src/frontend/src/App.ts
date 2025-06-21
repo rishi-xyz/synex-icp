@@ -1,6 +1,6 @@
 import { agent_backend } from "../../declarations/agent-backend";
 import { chat_message } from "../../declarations/agent-backend/agent-backend.did";
-import botImg from "./bot.svg";
+import botImg from "./robot.png";
 import userImg from "./user.svg";
 
 const PERSON_IMG = userImg;
@@ -20,7 +20,7 @@ class App {
     this.chat = [
       {
         assistant: {
-          content: ["I'm an agent specializing in looking up ICP balances. Ask me for an ICP balance to lookup."],
+          content: ["I'm SyneXAI your AI agent to interact with blockchain. Ask me for any blockchain queries you have."],
           tool_calls: [],
         },
       },
