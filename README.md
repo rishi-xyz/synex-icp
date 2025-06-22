@@ -1,106 +1,35 @@
-# ICP Lookup Agent (Rust)
+Synex-ICP 🌐🤖
+==============
 
-This project is an agent that showcases what it's like to build an agent that specializes in a specific task. In this case, the task is to lookup ICP prices.
+**Internet Computer Protocol Canister with AI-Powered Blockchain Interactions**
 
-It's meant to serve as an example for those who want to get started building agents on the Internet Computer.
+Synex-ICP is the decentralized backend infrastructure for Synex AI, built on the Internet Computer Protocol (ICP). It combines the power of Rust-based canisters, Ollama LLM integration, and Chain Fusion technology to create a comprehensive AI agent capable of interacting with multiple blockchain networks directly from the ICP ecosystem.
 
-[Live Demo](https://twf3b-uqaaa-aaaal-qsiva-cai.icp0.io/)
+🎯 Key Features
+---------------
 
-![Screenshot of the agent](./screenshot.png)
+*   **🦀 Rust Backend**: High-performance canister implementation in Rust
+    
+*   **🧠 Ollama LLM Integration**: Advanced language model capabilities for natural conversations
+    
+*   **🔗 Chain Fusion Support**: Seamless integration with multiple blockchain networks
+    
+*   **⚡ Vite Frontend**: Lightning-fast development and build experience
+    
+*   **🎨 Modern Chatbot UI**: Intuitive conversational interface
+    
+*   **🔒 ICP Security**: Leverages ICP's secure and tamper-proof infrastructure
+    
+*   **🌍 Decentralized**: Fully decentralized application with no single point of failure
+    
 
-## Quickstart with Ollama
-Prerequisites
-- [DFX](https://internetcomputer.org/docs/building-apps/getting-started/install) installed
-- [Ollama](https://ollama.com/) installed
-- [PNPM](https://pnpm.io/) installed
+🗺️ Roadmap
+-----------
 
-```bash
-# start ollama server
-ollama serve
-
-# Download the required model (one-time setup):
-ollama run llama3.1:8b
-
-# Start the local Internet Computer:
-dfx start --clean
-
-# Deploy the canisters:
-dfx deploy
-dfx deps deploy
-```
-
-Finally, access the agent at:
-```
-http://{FRONTEND_CANISTER_ID}.localhost:8080
-```
-
-## Deployment
-
-### LLM Backend Configuration
-The LLM canister supports two backend options for processing prompts:
-
-1. **Ollama (Local)**: A free, self-hosted solution that runs on your local machine. Perfect for testing and development without any costs.
-
-2. **OpenRouter API**: A cloud-based solution that can handle larger models that might be too resource-intensive for local machines. Requires an API key.
-Note: This used to Groq for v0.2.1 and lower.
-
-You can select your preferred backend by initialising the llm dependency through `dfx deps init` (see below for init arguments).
-
-
-#### Configure with Ollama
-To be able to test the agent locally, you'll need a server for processing the agent's prompts. For that, we'll use `ollama`, which is a tool that can download and serve LLMs.
-See the documentation on the [Ollama website](https://ollama.com/) to install it. Once it's installed, run:
-
-```
-ollama serve
-# Expected to start listening on port 11434
-```
-
-The above command will start the Ollama server, so that it can process requests by the agent. Additionally, and in a separate window, run the following command to download the LLM that will be used by the agent:
-
-```
-ollama run llama3.1:8b
-```
-
-The above command will download an 8B parameter model, which is around 4GiB. Once the command executes and the model is loaded, you can terminate it. You won't need to do this step again.
-
-Initialise the llm canister with `dfx deps init llm --argument '(opt variant { ollama }, null)'`. You can also inspect `deps/init.json` to see which backend will be used when launching the canister.
-This backend is also the default backend and thus will work without calling the initialisation if the `deps/init.json` has not been changed.
-
-
-#### Configure with OpenRouter
-As an alternative you can use the [OpenRouter API](https://openrouter.ai/). You will need to create an [API key](https://openrouter.ai/settings/keys) first.
-
-Initialise the llm canister with `dfx deps init llm --argument '(opt variant { openrouter = record { api_key = "{YOUR_API_KEY}" } }, null)'`, replacing `YOUR_API_KEY` with your own. You can also inspect `deps/init.json` to see which backend will be used when launching the canister.
-
-### Deployment
-
-Once your backend is set and initialized, you can start dfx and deploy the canisters.
-
-First, install `pnpm` and run `pnpm install` in the `src/frontend` directory.
-
-Then, in one terminal window, run:
-
-```bash
-dfx start --clean
-```
-
-Then pull the dependency and deploy the canisters in another window:
-
-```bash
-dfx deps pull
-dfx deploy
-dfx deps deploy  # deploys the ledger canister for looking up ICP balances and the llm canister
-```
-
-Once the deployment completes, you'll see the URL for the `agent-frontend` that looks like this:
-
-```
-http://0.0.0.0:8080/?canisterId={FRONTEND_CANISTER_ID}
-```
-
-Due to CORS policies on the browser, you should instead access the agent using the following URL:
-
-```
-http://{FRONTEND_CANISTER_ID}.localhost:8080
-```
+*   **Q1 2025**: Enhanced Chain Fusion support for 10+ networks
+    
+*   **Q2 2025**: Advanced AI agents with multi-step operations
+    
+*   **Q3 2025**: Mobile SDK for React Native integration
+    
+*   **Q4 2025**: Enterprise features and custom model training
